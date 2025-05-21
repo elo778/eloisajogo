@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fuja dos Obstáculos</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap');
+
+  body {
+    margin: 0;
+    background: linear-gradient(135deg, #1a1a1a, #000000);
+    font-family: 'Orbitron', monospace;
+    user-select: none;
+    overflow: hidden;
+    color: #0ff;
+  }
+
+  #gameContainer {
+    position: relative;
+    width: 480px;
+    height: 640px;
+    margin: 30px auto;
+    background: #121212;
+    border: 4px solid #00ffffcc;
+    border-radius: 16px;
+    box-shadow:
+      0 0 30px #00ffffcc,
+      inset 0 0 50px #00555588;
+  }
+
+  canvas {
+    display: block;
+    background: transparent;
+    border-radius: 12px;
+  }
+
+  #score {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 22px;
+    font-weight: 700;
+    text-shadow: 0 0 12px #00ffffaa;
+    user-select: none;
+  }
+
+  #gameOverScreen {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    color: #00ffff;
+    font-size: 36px;
+    font-weight: 700;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-radius: 16px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.5s ease;
+    z-index: 10;
+    padding: 20px;
+  }
+
+  #gameOverScreen.visible {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  #gameOverScreen button {
+    margin-top: 28px;
+    padding: 14px 36px;
+    font-size: 22px;
+    font-weight: 900;
+    background: #00ffff;
+    border: none;
+    border-radius: 12px;
+    color: #000;
+    cursor: pointer;
+    box-shadow: 0 0 18px #00ffffcc;
+    transition: background-color 0.3s ease;
+  }
+
+  #gameOverScreen button:hover {
+    background: #00cccc;
+    box-shadow: 0 0 24px #00ccccdd;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="480" height="640"></canvas>
+  <div id="score">Pontuação: 0</div>
+  <div id="gameOverScreen">
+    <div>Você foi atingido!</div>
+    <button id="restartBtn">Jogar Novamente</button>
+  </div>
+</div>
+<script>
+(() => {
+  const canvas = document.getElementById("gameCanvas");
+  const ctx = canvas.getContext("2d");
+  const WIDTH = canvas.width;
+  const HEIGHT = canvas.height;
+
+  const scoreElement = document.getElementById("score");
+  const gameOverScreen = document.getElementById("gameOverScreen");
+  const restartBtn = document.getElementById("restartBtn");
+
+  // Player character
+  class Player {
+    constructor() {
+      this.width = 48;
+      this.height = 48;
+      this.x = WIDTH / 2 - this.width / 2;
+      this.y = HEIGHT - this.height - 30;
+      this.speed = 8;
+      this.velocityX = 0;
+      this.color = "#00ffff";
+      this.cornerRadius = 10;
+    }
+
+    moveLeft() {
+      this.velocityX = -this.speed;
+    }
+
+    moveRight() {
+      this.velocityX = this.speed;
+    }
+
+    stop() {
+      this.velocityX = 0;
+    }
+
+    update() {
+      this.x += this.velocityX;
+      if (this.x < 0) this.x = 0;
+      if (this.x + this.width > WIDTH) this.x = WIDTH - this.width;
+    }
+
+    draw() {
+      ctx.save();
+      ctx.fillStyle = this.color;
+      ctx.shadowColor = "#00ffff";
+      ctx.shadowBlur = 14;
+      const r = this.cornerRadius;
+      const x = this.x, y = this.y, w = this.width, h = this.height;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    getBounds() {
+      return {
+        x: this.x,
+        y: this.y,
+        width: this.width,
+        height: this.height,
+      };
+    }
+  }
+
+  // Obstacle class
+  class Obstacle {
+    constructor() {
+      this.width = 40 + Math.random() * 20;
+      this.height = 40 + Math.random() * 20;
+      this.x = Math.random() * (WIDTH - this.width);
+      this.y = -this.height;
+      this.speed = 4 + Math.random() * 3;
+      this.colorHue = Math.floor(Math.random() * 360);
+      this.cornerRadius = 8;
+      this.rotation = Math.random() * Math.PI * 2;
+      this.rotSpeed = (Math.random() - 0.5) * 0.04;
+    }
+
+    update() {
+      this.y += this.speed;
+      this.rotation += this.rotSpeed;
+    }
+
+    draw() {
+      ctx.save();
+      ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+      ctx.rotate(this.rotation);
+
+      const gradient = ctx.createRadialGradient(
+        0,
+        0,
+        this.width * 0.1,
+        0,
+        0,
+        this.width * 0.6
+      );
+      gradient.addColorStop(
+        0,
+        `hsl(${this.colorHue}, 90%, 65%)`
+      );
+      gradient.addColorStop(
+        1,
+        `hsl(${this.colorHue}, 90%, 30%)`
+      );
+      ctx.fillStyle = gradient;
+
+      // Rounded rectangle shape
+      const w = this.width;
+      const h = this.height;
+      const r = this.cornerRadius;
+      ctx.beginPath();
+      ctx.moveTo(-w/2 + r, -h/2);
+      ctx.lineTo(w/2 - r, -h/2);
+      ctx.quadraticCurveTo(w/2, -h/2, w/2, -h/2 + r);
+      ctx.lineTo(w/2, h/2 - r);
+      ctx.quadraticCurveTo(w/2, h/2, w/2 - r, h/2);
+      ctx.lineTo(-w/2 + r, h/2);
+      ctx.quadraticCurveTo(-w/2, h/2, -w/2, h/2 - r);
+      ctx.lineTo(-w/2, -h/2 + r);
+      ctx.quadraticCurveTo(-w/2, -h/2, -w/2 + r, -h/2);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    getBounds() {
+      return {
+        x: this.x,
+        y: this.y,
+        width: this.width,
+        height: this.height,
+      };
+    }
+  }
+
+  // Detect collision (AABB)
+  function isColliding(a, b) {
+    return !(
+      a.x + a.width < b.x ||
+      a.x > b.x + b.width ||
+      a.y + a.height < b.y ||
+      a.y > b.y + b.height
+    );
+  }
+
+  // Variables
+  let player;
+  let obstacles;
+  let obstacleSpawnTimer;
+  let obstacleSpawnInterval;
+  let score;
+  let gameRunning;
+
+  // Input control
+  const keys = {};
+  window.addEventListener("keydown", (e) => {
+    keys[e.key.toLowerCase()] = true;
+  });
+  window.addEventListener("keyup", (e) => {
+    keys[e.key.toLowerCase()] = false;
+  });
+
+  restartBtn.addEventListener("click", () => {
+    resetGame();
+  });
+
+  function resetGame() {
+    player = new Player();
+    obstacles = [];
+    obstacleSpawnTimer = 0;
+    obstacleSpawnInterval = 55;
+    score = 0;
+    gameRunning = true;
+    scoreElement.textContent = "Pontuação: 0";
+    gameOverScreen.classList.remove("visible");
+  }
+
+  // Main game loop
+  function gameLoop() {
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+    if (gameRunning) {
+      // Player movement
+      if (keys["arrowleft"] || keys["a"]) {
+        player.moveLeft();
+      } else if (keys["arrowright"] || keys["d"]) {
+        player.moveRight();
+      } else {
+        player.stop();
+      }
+      player.update();
+      player.draw();
+
+      // Spawn obstacles
+      obstacleSpawnTimer++;
+      if (obstacleSpawnTimer >= obstacleSpawnInterval) {
+        obstacleSpawnTimer = 0;
+        obstacles.push(new Obstacle());
+        if(obstacleSpawnInterval > 30) obstacleSpawnInterval -= 0.3;
+      }
+
+      // Update and draw obstacles
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        obstacles[i].update();
+        obstacles[i].draw();
+
+        // Remove if offscreen
+        if (obstacles[i].y > HEIGHT + obstacles[i].height) {
+          obstacles.splice(i, 1);
+          score++;
+          scoreElement.textContent = "Pontuação: " + score;
+        } else if (isColliding(player.getBounds(), obstacles[i].getBounds())) {
+          gameRunning = false;
+          gameOverScreen.classList.add("visible");
+        }
+      }
+    } else {
+      // Draw player and obstacles static after game over
+      player.draw();
+      obstacles.forEach((o) => o.draw());
+    }
+
+    requestAnimationFrame(gameLoop);
+  }
+
+  resetGame();
+  gameLoop();
+})();
+</script>
+</body>
+</html>
